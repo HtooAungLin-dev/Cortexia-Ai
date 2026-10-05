@@ -15,6 +15,7 @@ import { MemoryCheckpointsView } from './components/MemoryCheckpointsView';
 import { DocumentLibraryView } from './components/DocumentLibraryView';
 import { ConfigModal } from './components/ConfigModal';
 import { DocumentUploadModal } from './components/DocumentUploadModal';
+import { ApiDiagnosticsModal } from './components/ApiDiagnosticsModal';
 
 import {
   ActiveView,
@@ -43,6 +44,32 @@ import {
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveView>('chat');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // API Connection & Diagnostics State
+  const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'offline'>('checking');
+  const [apiInfo, setApiInfo] = useState<any>(null);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [forceClientEngine, setForceClientEngine] = useState(false);
+
+  // Proactive health check on mount
+  const checkApiHealth = async () => {
+    try {
+      const res = await fetch('/api/health');
+      if (res.ok) {
+        const info = await res.json();
+        setApiStatus('connected');
+        setApiInfo(info);
+      } else {
+        setApiStatus('offline');
+      }
+    } catch {
+      setApiStatus('offline');
+    }
+  };
+
+  useEffect(() => {
+    checkApiHealth();
+  }, []);
 
   // Chat Sessions & History
   const [sessions, setSessions] = useState<ChatSession[]>(() =>
@@ -202,36 +229,43 @@ export default function App() {
       // Step 2: Query Backend Agent endpoint or switch autonomously to client engine if 404/static
       let data: any = null;
 
-      try {
-        const res = await fetch('/api/agent/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: textToSend,
-            history: updatedMessages.slice(-6),
-            conversationSummary,
-            retrievedChunks: formattedChunks,
-            model: config.model,
-            temperature: config.temperature,
-          }),
-        });
+      if (!forceClientEngine) {
+        try {
+          const res = await fetch('/api/agent/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: textToSend,
+              history: updatedMessages.slice(-6),
+              conversationSummary,
+              retrievedChunks: formattedChunks,
+              model: config.model,
+              temperature: config.temperature,
+            }),
+          });
 
-        // Only parse as JSON if the server actually returned 200 OK and JSON
-        if (res.ok) {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const responseText = await res.text();
-            if (responseText && responseText.trim()) {
-              try {
-                data = JSON.parse(responseText);
-              } catch (jsonErr) {
-                console.warn('Failed to parse backend response as JSON:', jsonErr);
+          // Only parse as JSON if the server actually returned 200 OK and JSON
+          if (res.ok) {
+            setApiStatus('connected');
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              const responseText = await res.text();
+              if (responseText && responseText.trim()) {
+                try {
+                  data = JSON.parse(responseText);
+                } catch (jsonErr) {
+                  console.warn('Failed to parse backend response as JSON:', jsonErr);
+                }
               }
             }
+          } else {
+            console.warn(`Backend responded with HTTP ${res.status}. Falling back to client-side engine.`);
+            setApiStatus('offline');
           }
+        } catch (networkErr) {
+          console.warn('Backend unavailable, running autonomous client agent:', networkErr);
+          setApiStatus('offline');
         }
-      } catch (networkErr) {
-        console.warn('Backend unavailable, running autonomous client agent:', networkErr);
       }
 
       // If backend returned 404 (e.g. Vercel static deployment or offline server) or empty response, run client-side agent
@@ -541,6 +575,8 @@ export default function App() {
           onOpenConfig={() => setIsConfigOpen(true)}
           onExport={handleExport}
           totalIndexedPoints={qdrantStore.getPoints(config.activeCollection).length}
+          apiStatus={apiStatus}
+          onOpenDiagnostics={() => setIsDiagnosticsOpen(true)}
         />
 
         {/* Dynamic Main Views */}
@@ -733,6 +769,17 @@ export default function App() {
         onDocumentAdded={handleDocumentAdded}
         chunkSize={config.chunkSize}
         chunkOverlap={config.chunkOverlap}
+      />
+
+      {/* API Diagnostics & Health Monitor Modal */}
+      <ApiDiagnosticsModal
+        isOpen={isDiagnosticsOpen}
+        onClose={() => setIsDiagnosticsOpen(false)}
+        apiStatus={apiStatus}
+        apiInfo={apiInfo}
+        onRecheck={checkApiHealth}
+        forceClientEngine={forceClientEngine}
+        setForceClientEngine={setForceClientEngine}
       />
     </div>
   );
