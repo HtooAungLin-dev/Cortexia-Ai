@@ -30,6 +30,7 @@ import { INITIAL_DOCUMENTS } from './data/defaultDocuments';
 import { qdrantStore } from './services/qdrantStore';
 import { checkpointManager } from './services/checkpointManager';
 import { chatHistoryService } from './services/chatHistoryService';
+import { executeClientAgent } from './services/clientAgentEngine';
 
 import {
   ArrowUp,
@@ -198,42 +199,51 @@ export default function App() {
         },
       }));
 
-      // Step 2: Call Backend Agent endpoint (with Gemini 3.8 Flash)
-      const res = await fetch('/api/agent/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      // Step 2: Query Backend Agent endpoint or switch autonomously to client engine if 404/static
+      let data: any = null;
+
+      try {
+        const res = await fetch('/api/agent/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: textToSend,
+            history: updatedMessages.slice(-6),
+            conversationSummary,
+            retrievedChunks: formattedChunks,
+            model: config.model,
+            temperature: config.temperature,
+          }),
+        });
+
+        // Only parse as JSON if the server actually returned 200 OK and JSON
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const responseText = await res.text();
+            if (responseText && responseText.trim()) {
+              try {
+                data = JSON.parse(responseText);
+              } catch (jsonErr) {
+                console.warn('Failed to parse backend response as JSON:', jsonErr);
+              }
+            }
+          }
+        }
+      } catch (networkErr) {
+        console.warn('Backend unavailable, running autonomous client agent:', networkErr);
+      }
+
+      // If backend returned 404 (e.g. Vercel static deployment or offline server) or empty response, run client-side agent
+      if (!data || (!data.text && !data.hitlAction)) {
+        data = await executeClientAgent({
           message: textToSend,
-          history: updatedMessages.slice(-6),
+          history: updatedMessages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
           conversationSummary,
           retrievedChunks: formattedChunks,
           model: config.model,
           temperature: config.temperature,
-        }),
-      });
-
-      // Safely read response text first to prevent 'Unexpected end of JSON input'
-      const responseText = await res.text();
-      let data: any = null;
-      if (responseText && responseText.trim()) {
-        try {
-          data = JSON.parse(responseText);
-        } catch (jsonErr) {
-          console.warn('Failed to parse backend response as JSON:', jsonErr, responseText.slice(0, 100));
-        }
-      }
-
-      // If backend returned empty or non-JSON, synthesize resilient fallback
-      if (!data || (!data.text && !data.hitlAction)) {
-        data = {
-          type: 'response',
-          text: `Technical Analysis & Pipeline Response\n\nI have received your request: "${textToSend}".\n\nKey Insights:\n• Your query was evaluated through Cortexia AI's local vector index.\n• Session state and checkpoints have been safely committed.\n• You can proceed with follow-up questions or code execution requests.`,
-          agentReasoning: [
-            'Evaluated user prompt via local resilient runtime.',
-            'Ensured memory checkpoint integrity.',
-            'Synthesized clean grounded response.',
-          ],
-        };
+        });
       }
 
       const latencyMs = Math.round(performance.now() - startTime);
