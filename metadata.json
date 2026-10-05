@@ -1,0 +1,6 @@
+{
+  "name": "Zyricon - Agentic AI & RAG Pipeline Workbench",
+  "description": "Production AI Agent workbench featuring RAG PDF pipeline, Qdrant semantic search, conversation memory checkpoints, Human-in-the-Loop email actions, and summarization middleware.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
