@@ -40,6 +40,36 @@ import {
   Mic,
 } from 'lucide-react';
 
+async function parseJsonResponse(response: Response): Promise<any | null> {
+  if (!response || !response.ok) {
+    return null;
+  }
+
+  const text = await response.text();
+  if (!text || !text.trim()) {
+    return null;
+  }
+
+  const trimmed = text.trim();
+  const contentType = response.headers.get('content-type') || '';
+  const isJsonLike =
+    contentType.includes('application/json') ||
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('[') ||
+    trimmed === 'null';
+
+  if (!isJsonLike) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    console.warn('Backend returned malformed JSON, falling back to local agent logic.', error);
+    return null;
+  }
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveView>('chat');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -216,20 +246,7 @@ export default function App() {
           }),
         });
 
-        // Only parse as JSON if the server actually returned 200 OK and JSON
-        if (res.ok) {
-          const contentType = res.headers.get('content-type') || '';
-          if (contentType.includes('application/json')) {
-            const responseText = await res.text();
-            if (responseText && responseText.trim()) {
-              try {
-                data = JSON.parse(responseText);
-              } catch (jsonErr) {
-                console.warn('Failed to parse backend response as JSON:', jsonErr);
-              }
-            }
-          }
-        }
+        data = await parseJsonResponse(res);
       } catch (networkErr) {
         console.warn('Backend unavailable, running autonomous client agent:', networkErr);
       }
