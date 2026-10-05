@@ -237,14 +237,26 @@ FORMATTING: DO NOT use markdown hashtag headers (never output '####' or '###'). 
       }
       contents.push({ role: 'user', parts: [{ text: effectivePrompt }] });
 
-      const resp = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents,
-        config: { systemInstruction, temperature: 0.7 },
-      });
-      responseText = resp.text || '';
-    } catch (e) {
-      console.warn('Direct client Gemini call fell back to local synthesis:', e);
+      const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      for (const m of candidateModels) {
+        try {
+          const resp = await ai.models.generateContent({
+            model: m,
+            contents,
+            config: { systemInstruction, temperature: 0.7 },
+          });
+          if (resp.text) {
+            responseText = resp.text;
+            break;
+          }
+        } catch {
+          // try next model
+        }
+      }
+      if (!responseText) {
+        responseText = synthesizeIntelligentAnswer(effectivePrompt, retrievedChunks);
+      }
+    } catch {
       responseText = synthesizeIntelligentAnswer(effectivePrompt, retrievedChunks);
     }
   } else {

@@ -323,26 +323,39 @@ FORMATTING REQUIREMENTS:
       });
 
       let text = '';
-      try {
-        // Enforce 10-second timeout to prevent Cloud Run proxy disconnects
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Upstream model timeout (10s exceeded)')), 10000)
-        );
+      const candidateModels = [
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+      ];
 
-        const geminiPromise = ai.models.generateContent({
-          model: 'gemini-3.8-flash',
-          contents,
-          config: {
-            systemInstruction,
-            temperature,
-          },
-        });
+      for (const candidateModel of candidateModels) {
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error(`Timeout with model ${candidateModel}`)), 9000)
+          );
 
-        const response: any = await Promise.race([geminiPromise, timeoutPromise]);
-        text = response?.text || '';
-      } catch (geminiErr: any) {
-        console.warn('Gemini API call encountered transient issue or timeout, using versatile fallback:', geminiErr?.message || geminiErr);
-        // Fallback versatile response answering any question directly like Claude
+          const geminiPromise = ai.models.generateContent({
+            model: candidateModel,
+            contents,
+            config: {
+              systemInstruction,
+              temperature,
+            },
+          });
+
+          const response: any = await Promise.race([geminiPromise, timeoutPromise]);
+          if (response?.text) {
+            text = response.text;
+            console.log(`Generated response using: ${candidateModel}`);
+            break;
+          }
+        } catch (modelErr: any) {
+          console.warn(`Model ${candidateModel} unavailable (${modelErr.status || modelErr.message}), checking next candidate...`);
+        }
+      }
+
+      if (!text) {
         text = generateVersatileResponse(effectivePrompt, retrievedChunks);
       }
 
