@@ -32,6 +32,10 @@ import { qdrantStore } from './services/qdrantStore';
 import { checkpointManager } from './services/checkpointManager';
 import { chatHistoryService } from './services/chatHistoryService';
 import { executeClientAgent } from './services/clientAgentEngine';
+import {
+  checkBackendHealth,
+  sendChatMessage,
+} from './services/apiClient';
 
 import {
   ArrowUp,
@@ -54,11 +58,10 @@ export default function App() {
   // Proactive health check on mount
   const checkApiHealth = async () => {
     try {
-      const res = await fetch('/api/health');
+      const res = await checkBackendHealth();
       if (res.ok) {
-        const info = await res.json();
         setApiStatus('connected');
-        setApiInfo(info);
+        setApiInfo(res.data);
       } else {
         setApiStatus('offline');
       }
@@ -226,40 +229,27 @@ export default function App() {
         },
       }));
 
-      // Step 2: Query Backend Agent endpoint or switch autonomously to client engine if 404/static
+      // Step 2: Query Backend Agent endpoint or switch autonomously to client engine if 404/500/offline
       let data: any = null;
 
       if (!forceClientEngine) {
         try {
-          const res = await fetch('/api/agent/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              message: textToSend,
-              history: updatedMessages.slice(-6),
-              conversationSummary,
-              retrievedChunks: formattedChunks,
-              model: config.model,
-              temperature: config.temperature,
-            }),
+          const chatRes = await sendChatMessage({
+            message: textToSend,
+            history: updatedMessages.slice(-6),
+            conversationSummary,
+            retrievedChunks: formattedChunks,
+            model: config.model,
+            temperature: config.temperature,
           });
 
-          // Only parse as JSON if the server actually returned 200 OK and JSON
-          if (res.ok) {
+          if (chatRes.ok && chatRes.data) {
             setApiStatus('connected');
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-              const responseText = await res.text();
-              if (responseText && responseText.trim()) {
-                try {
-                  data = JSON.parse(responseText);
-                } catch (jsonErr) {
-                  console.warn('Failed to parse backend response as JSON:', jsonErr);
-                }
-              }
-            }
+            data = chatRes.data;
           } else {
-            console.warn(`Backend responded with HTTP ${res.status}. Falling back to client-side engine.`);
+            console.warn(
+              `Backend query to ${chatRes.url} returned status ${chatRes.statusCode}: ${chatRes.error}. Falling back cleanly to client-side engine.`
+            );
             setApiStatus('offline');
           }
         } catch (networkErr) {
@@ -268,7 +258,7 @@ export default function App() {
         }
       }
 
-      // If backend returned 404 (e.g. Vercel static deployment or offline server) or empty response, run client-side agent
+      // If backend was offline, returned 404/500, or returned empty response, run client-side agent
       if (!data || (!data.text && !data.hitlAction)) {
         data = await executeClientAgent({
           message: textToSend,
@@ -390,13 +380,10 @@ export default function App() {
 
     setIsLoading(true);
     try {
-      await fetch('/api/agent/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hitlApprovedAction: updatedAction,
-          model: config.model,
-        }),
+      await sendChatMessage({
+        message: 'Execute approved action',
+        hitlApprovedAction: updatedAction,
+        model: config.model,
       });
 
       const confirmationMessage: ChatMessageType = {
@@ -760,6 +747,7 @@ export default function App() {
         onClose={() => setIsConfigOpen(false)}
         config={config}
         setConfig={setConfig}
+        onBackendUrlChanged={checkApiHealth}
       />
 
       {/* Document Upload Modal */}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Sliders,
@@ -7,14 +7,17 @@ import {
   ShieldAlert,
   Save,
   RotateCcw,
+  Globe,
 } from 'lucide-react';
 import { AgentConfig } from '../types/agent';
+import { getBackendUrl, setBackendUrl } from '../services/apiClient';
 
 interface ConfigModalProps {
   isOpen: boolean;
   onClose: () => void;
   config: AgentConfig;
   setConfig: React.Dispatch<React.SetStateAction<AgentConfig>>;
+  onBackendUrlChanged?: () => void;
 }
 
 export const ConfigModal: React.FC<ConfigModalProps> = ({
@@ -22,7 +25,15 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
   onClose,
   config,
   setConfig,
+  onBackendUrlChanged,
 }) => {
+  const [backendUrlInput, setBackendUrlInput] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setBackendUrlInput(getBackendUrl());
+    }
+  }, [isOpen]);
   if (!isOpen) return null;
 
   const handleResetDefaults = () => {
@@ -241,20 +252,48 @@ export const ConfigModal: React.FC<ConfigModalProps> = ({
               </label>
             </div>
           </div>
+
+          {/* Section 5: Separate Backend API Hosting */}
+          <div className="space-y-3 pt-4 border-t border-slate-800">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+              <Globe className="w-4 h-4" />
+              <span>Backend API Host (Separate Hosting)</span>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[11px] text-slate-300">
+                If hosting frontend and backend on separate platforms (e.g. Vercel + Render/Railway), enter your backend origin:
+              </div>
+              <input
+                type="text"
+                value={backendUrlInput}
+                onChange={(e) => setBackendUrlInput(e.target.value)}
+                placeholder="e.g. https://cortexia-api.onrender.com (empty for local /api)"
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-cyan-500 placeholder:text-slate-600"
+              />
+              <div className="text-[10px] text-slate-500">
+                Leave blank if using the same server origin or preview proxy.
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-900/40 flex items-center justify-between">
           <button
             onClick={handleResetDefaults}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset Defaults</span>
           </button>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              setBackendUrl(backendUrlInput);
+              if (onBackendUrlChanged) onBackendUrlChanged();
+              onClose();
+            }}
             className="flex items-center gap-2 px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-white transition-all shadow-md cursor-pointer"
           >
             <Save className="w-3.5 h-3.5" />

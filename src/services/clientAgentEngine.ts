@@ -237,7 +237,12 @@ FORMATTING: DO NOT use markdown hashtag headers (never output '####' or '###'). 
       }
       contents.push({ role: 'user', parts: [{ text: effectivePrompt }] });
 
-      const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      const candidateModels = [
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-2.5-pro',
+      ];
       for (const m of candidateModels) {
         try {
           const resp = await ai.models.generateContent({

@@ -15,6 +15,8 @@ interface HeaderProps {
   onOpenConfig: () => void;
   onExport: (format: 'markdown' | 'json') => void;
   totalIndexedPoints: number;
+  apiStatus?: 'checking' | 'connected' | 'offline';
+  onOpenDiagnostics?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenConfig,
   onExport,
   totalIndexedPoints,
+  apiStatus,
+  onOpenDiagnostics,
 }) => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [exportDropdownOpen, setExportDropdownOpen] = useState(false);
@@ -99,6 +103,31 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             <span>HITL Guard Active</span>
           </div>
+        )}
+
+        {apiStatus && (
+          <button
+            onClick={onOpenDiagnostics}
+            className={`flex items-center gap-2 px-3 py-1 rounded-full border text-[11px] font-mono transition-colors cursor-pointer ${
+              apiStatus === 'connected'
+                ? 'bg-cyan-950/30 border-cyan-800/30 text-cyan-300 hover:bg-cyan-900/40'
+                : apiStatus === 'checking'
+                ? 'bg-amber-950/30 border-amber-800/30 text-amber-300 hover:bg-amber-900/40'
+                : 'bg-rose-950/30 border-rose-800/30 text-rose-300 hover:bg-rose-900/40'
+            }`}
+            title="Click to view API diagnostics"
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                apiStatus === 'connected'
+                  ? 'bg-cyan-400'
+                  : apiStatus === 'checking'
+                  ? 'bg-amber-400 animate-pulse'
+                  : 'bg-rose-400'
+              }`}
+            />
+            <span>API: {apiStatus}</span>
+          </button>
         )}
       </div>
 
